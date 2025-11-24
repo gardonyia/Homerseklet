@@ -172,9 +172,10 @@ if st.button("Hőmérsékleti adatok lekérése"):
         st.markdown(f"### A hőmérsékleti szélső értékek {date_str}-re vonatkozóan:\n\n" + " | ".join(parts))
 
     except requests.HTTPError as e:
-        st.error(f"Hiba a fájl letöltésekor: {e}. Ellenőrizd, hogy a fájl létezik a szerveren (a dátum lehet, hogy túl friss).")
+        st.error(f"Hiba a fájl letöltésekor: {e}. Ellenőrizd, hogy a fájl létezik a szerveren (a dátum lehet, hogy túl friss, vagy túl régi).")
     except FileNotFoundError as e:
         st.error(f"A zip fájlban nem található CSV: {e}")
     except Exception as e:
         st.error(f"Hiba történt: {e}")
+
 
