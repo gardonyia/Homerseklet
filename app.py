@@ -6,7 +6,8 @@ import pandas as pd
 from datetime import datetime
 
 st.title("Magyarországi napi hőmérsékleti szélsőértékek")
-st.write("Adatok forrása: [Hungaromet ODP](https://odp.met.hu/weather/weather_reports/synoptic/hunge = st.date_input("Válassz dátumot:", datetime.now())
+st.write("Adatok forrása: [Hungaromet ODP]
+(https://odp.met.hu/weather/weather_reports/synoptic/hunge = st.date_input("Válassz dátumot:", datetime.now())
 selected_date = st.date_input("Válassz dátumot:", datetime.now())
 date_tag = selected_date.strftime("%Y%m%d")
 human_date = selected_date.strftime("%Y.%m.%d")
@@ -102,4 +103,5 @@ if st.button("Hőmérsékleti adatok lekérése"):
     # Opcionális: mutassuk meg az első pár sort a diagnosztika érdekében
     with st.expander("Részletek / nyers adatok (diagnosztika)"):
         st.write("Oszlopok:", list(df.columns))
+
 
