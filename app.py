@@ -129,7 +129,7 @@ def parse_and_find_extremes(csv_text):
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Magyarországi napi hőmérsékleti szélsők", layout="centered")
 
-st.title("Hőmérsékleti adatok (Hungaromet ODP)")
+st.title("Hőmérsékleti adatok | Hungaromet - Meteorológiai Adattár")
 
 st.markdown("""
 Ez az alkalmazás letölti a Meteorológiai Adattár `HABP_1D_<YYYYMMDD>.csv.zip` fájlját,
@@ -177,3 +177,4 @@ if st.button("Hőmérsékleti adatok lekérése"):
         st.error(f"A zip fájlban nem található CSV: {e}")
     except Exception as e:
         st.error(f"Hiba történt: {e}")
+
