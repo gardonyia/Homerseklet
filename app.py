@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import zipfile
@@ -6,18 +5,24 @@ import io
 import pandas as pd
 from datetime import datetime
 
+# Cím és forrás
 st.title("Magyarországi napi hőmérsékleti szélsőértékek")
-st.write("Adatok forrása: [Hungaromet ODP](https://odp.met.hu/weather/weather_reports/synoptic/hungary/daily/c_input("Válassz dátumot:", datetime.now())
+st.write("Adatok forrása: Hungaromet ODP")
+
+# Dátumválasztó (alapértelmezett: mai nap)
+selected_date = st.date_input("Válassz dátumot:", datetime.now())
 date_str = selected_date.strftime("%Y%m%d")
 
+# Gomb az adatok lekéréséhez
 if st.button("Hőmérsékleti adatok lekérése"):
     url = f"https://odp.met.hu/weather/weather_reports/synoptic/hungary/daily/csv/HABP_1D_{date_str}.zip"
     st.write(f"Adatok letöltése: {url}")
+    
     response = requests.get(url)
-
     if response.status_code != 200:
         st.error("Nem sikerült letölteni az adatokat. Lehet, hogy nincs adat a kiválasztott napra.")
     else:
+        # ZIP fájl kibontása memóriában
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             csv_name = f"HABP_1D_{date_str}.csv"
             with z.open(csv_name) as csv_file:
@@ -29,11 +34,13 @@ if st.button("Hőmérsékleti adatok lekérése"):
         if df.empty:
             st.warning("Nincs érvényes adat a kiválasztott napra.")
         else:
+            # Minimum és maximum értékek meghatározása
             min_temp = df['tn'].min()
             max_temp = df['tx'].max()
             min_station = df.loc[df['tn'].idxmin(), 'stationName']
             max_station = df.loc[df['tx'].idxmax(), 'stationName']
 
+            # Eredmény kiírása
             st.success(f"A hőmérsékleti szélső értékek {selected_date.strftime('%Y.%m.%d')}-re vonatkozóan:")
             st.write(f"**Maximum:** {max_temp} °C (állomás: {max_station})")
             st.write(f"**Minimum:** {min_temp} °C (állomás: {min_station})")
