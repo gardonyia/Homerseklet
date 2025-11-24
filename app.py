@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Cím és forrás
 st.title("Magyarországi napi hőmérsékleti szélsőértékek")
-st.write("Adatok forrása: [Hungaromet ODP]
+st.write("Adatok forrása: [Hungaromet ODP"]
 (https://odp.met.hu/weather/weather_reports/synoptic/hungary/dailyte_input("Válassz dátumot:", datetime.now())
 date_tag = selected_date.strftime("%Y%m%d")
 human_date = selected_date.strftime("%Y.%m.%d")
@@ -89,3 +89,4 @@ if st.button("Hőmérsékleti adatok lekérése"):
     with st.expander("Részletek / nyers adatok"):
         st.write("Oszlopok:", list(df.columns))
         st.dataframe(valid[[station_col, tn_col, tx_col]].head(20))
+
