@@ -15,7 +15,7 @@ date_str = selected_date.strftime("%Y%m%d")
 
 # Gomb az adatok lekéréséhez
 if st.button("Hőmérsékleti adatok lekérése"):
-    url = f"https://odp.met.hu/weather/weather_reports/synoptic/hungary/daily/csv/HABP_1D_{date_str}.zip"
+    url = f"https://odp.met.hu/weather/weather_reports/synoptic/hungary/daily/csv/HABP_1D_{date_str}.csv.zip"
     st.write(f"Adatok letöltése: {url}")
     
     response = requests.get(url)
@@ -44,3 +44,4 @@ if st.button("Hőmérsékleti adatok lekérése"):
             st.success(f"A hőmérsékleti szélső értékek {selected_date.strftime('%Y.%m.%d')}-re vonatkozóan:")
             st.write(f"**Maximum:** {max_temp} °C (állomás: {max_station})")
             st.write(f"**Minimum:** {min_temp} °C (állomás: {min_station})")
+
