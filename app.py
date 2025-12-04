@@ -50,58 +50,81 @@ def parse_and_find_extremes(csv_text):
     df = pd.read_csv(io.StringIO(csv_text), sep=";", engine="python", dtype=str, header=0)
     df.columns = [c.strip() for c in df.columns]
 
-    station_candidates = [c for c in df.columns if 'station' in c.lower() or 'állomás' in c.lower()]
-    station_col = station_candidates[0] if station_candidates else df.columns[2]
+    # Állomásszám és állomásnév
+    station_name_col = next((c for c in df.columns if "stationname" in c.lower()), df.columns[2])
+    station_num_col = next((c for c in df.columns if "stationnumber" in c.lower()), None)
 
-    min_candidates = [c for c in df.columns if c.lower() in ('tn', 'tn24', 'min', 'minimum')]
-    max_candidates = [c for c in df.columns if c.lower() in ('tx', 'tx24', 'max', 'maximum')]
+    # Koordináták
+    lat_col = next((c for c in df.columns if "lat" in c.lower()), None)
+    lon_col = next((c for c in df.columns if "lon" in c.lower() or "lng" in c.lower()), None)
 
-    min_col = min_candidates[0] if min_candidates else df.columns[10]
-    max_col = max_candidates[0] if max_candidates else df.columns[12]
+    # Min / Max
+    min_col = next((c for c in df.columns if c.lower() in ("tn", "tn24", "minimum", "min")), df.columns[10])
+    max_col = next((c for c in df.columns if c.lower() in ("tx", "tx24", "maximum", "max")), df.columns[12])
 
-    def to_float_series(s):
-        s2 = s.astype(str).str.strip().replace('', pd.NA)
-        s2 = s2.replace({'-999': pd.NA})
-        s2 = s2.str.replace(',', '.', regex=False)
-        return pd.to_numeric(s2, errors='coerce')
+    # Konvertálás
+    def tf(s):
+        s2 = s.astype(str).str.strip().replace("", pd.NA)
+        s2 = s2.replace({"-999": pd.NA})
+        s2 = s2.str.replace(",", ".", regex=False)
+        return pd.to_numeric(s2, errors="coerce")
 
-    min_series = to_float_series(df[min_col])
-    max_series = to_float_series(df[max_col])
-    station_series = df[station_col].astype(str).str.strip()
+    min_series = tf(df[min_col])
+    max_series = tf(df[max_col])
 
-    if min_series.dropna().empty:
+    # Első találatok
+    min_idx = min_series.idxmin() if not min_series.dropna().empty else None
+    max_idx = max_series.idxmax() if not max_series.dropna().empty else None
+
+    def fmt_station(idx):
+        name = df.loc[idx, station_name_col]
+        if station_num_col:
+            num = df.loc[idx, station_num_col]
+            return f"{num} - {name}"
+        return name
+
+    # Minimum adat
+    if min_idx is not None:
+        min_res = {
+            "value": float(min_series.loc[min_idx]),
+            "station": fmt_station(min_idx),
+            "lat": float(df.loc[min_idx, lat_col]) if lat_col else None,
+            "lon": float(df.loc[min_idx, lon_col]) if lon_col else None,
+        }
+    else:
         min_res = None
-    else:
-        idx = min_series.idxmin()
-        min_res = {"value": float(min_series.loc[idx]), "station": station_series.loc[idx]}
 
-    if max_series.dropna().empty:
+    # Maximum adat
+    if max_idx is not None:
+        max_res = {
+            "value": float(max_series.loc[max_idx]),
+            "station": fmt_station(max_idx),
+            "lat": float(df.loc[max_idx, lat_col]) if lat_col else None,
+            "lon": float(df.loc[max_idx, lon_col]) if lon_col else None,
+        }
+    else:
         max_res = None
-    else:
-        idx = max_series.idxmax()
-        max_res = {"value": float(max_series.loc[idx]), "station": station_series.loc[idx]}
 
-    return min_res, max_res, {
-        "station": station_col,
-        "min": min_col,
-        "max": max_col,
-    }
+    return min_res, max_res
 
 
 # ---------------------------------------------------------
 # UI – CÍM
 # ---------------------------------------------------------
-st.title("🌡️ Hőmérsékleti szélsőértékek • Hungaromet – Meteorológiai Adattár")
+st.title("🌡️ Magyarországi hőmérsékleti szélsők • Hungaromet")
 
 st.markdown("""
-Ez az alkalmazás letölti a Hungaromet `HABP_1D_<YYYYMMDD>.csv.zip` napi adatfájlját,  
-kinyeri a hőmérsékleti értékeket, és megmutatja **az adott nap országos minimum és maximum hőmérsékletét**.
+Ez az alkalmazás letölti a Hungaromet napi adatállományát és megjeleníti:
 
-A ZIP fájl természetesen **egy kattintással letölthető**.
+- 🔥 **Napi maximum hőmérsékletet**
+- ❄️ **Napi minimum hőmérsékletet**
+- 🗺️ **Mindkettőt térképen is**
+
+A ZIP fájl természetesen le is tölthető.
 """)
 
 # ---------------------------------------------------------
-# DÁTUMVÁLASZTÓ BLOKK
+# DÁTUMVÁLASZTÁS
 # ---------------------------------------------------------
 today = local_today()
 default_date = today - timedelta(days=1)
@@ -109,22 +132,17 @@ default_date = today - timedelta(days=1)
 st.subheader("📅 Dátum kiválasztása")
 date_selected = st.date_input("Válaszd ki a napot:", value=default_date)
 
-
 # ---------------------------------------------------------
-# GOMB – LEKÉRÉS
+# ADATOK LEKÉRÉSE
 # ---------------------------------------------------------
 if st.button("🔎 Adatok lekérése", type="primary"):
     try:
         filename = build_filename_for_date(date_selected)
         url = BASE_INDEX_URL + filename
 
-        # ⛔ Itt volt a felesleges üzenet → töröltük
-        # st.info("⏳ Fájl letöltése folyamatban...")
-
-        # ZIP LETÖLTÉSE
         zip_bytes = download_zip_bytes(url)
 
-        # LETÖLTHETŐ ZIP GOMB
+        # Letöltés gomb
         st.download_button(
             label="📦 ZIP fájl letöltése",
             data=zip_bytes,
@@ -132,41 +150,69 @@ if st.button("🔎 Adatok lekérése", type="primary"):
             mime="application/zip"
         )
 
-        # CSV kinyerése
         csv_text = extract_csv_from_zipbytes(zip_bytes, expected_csv_name=filename.replace(".zip", ""))
 
-        # Elemzés
-        min_res, max_res, used_cols = parse_and_find_extremes(csv_text)
+        min_res, max_res = parse_and_find_extremes(csv_text)
 
-        st.success("✅ A fájl sikeresen beolvasva és feldolgozva.")
-
-        st.markdown(f"**Használt oszlopok:** `{used_cols}`")
+        st.success("✅ Sikeres feldolgozás!")
 
         date_str = date_selected.strftime("%Y.%m.%d")
-
-        st.subheader(f"🌤️ Hőmérsékleti szélsők – {date_str}")
+        st.subheader(f"🌤️ Szélsőértékek – {date_str}")
 
         col1, col2 = st.columns(2)
 
+        # MAX
         with col1:
-            st.markdown("### 🔥 Napi maximum")
+            st.markdown("### 🔥 Maximum")
             if max_res:
                 st.metric(
-                    label=f"Állomás: {max_res['station']}",
+                    label=max_res["station"],
                     value=f"{max_res['value']} °C"
                 )
             else:
-                st.warning("Nincs elérhető maximum adat.")
+                st.warning("Nincs adat.")
 
+        # MIN
         with col2:
-            st.markdown("### ❄️ Napi minimum")
+            st.markdown("### ❄️ Minimum")
             if min_res:
                 st.metric(
-                    label=f"Állomás: {min_res['station']}",
+                    label=min_res["station"],
                     value=f"{min_res['value']} °C"
                 )
             else:
-                st.warning("Nincs elérhető minimum adat.")
+                st.warning("Nincs adat.")
+
+        # ---------------------------------------------------------
+        # TÉRKÉPI MEGJELENÍTÉS
+        # ---------------------------------------------------------
+        st.subheader("🗺️ Térképi megjelenítés")
+
+        map_data = []
+
+        if max_res and max_res["lat"] and max_res["lon"]:
+            map_data.append({
+                "lat": max_res["lat"],
+                "lon": max_res["lon"],
+                "type": "MAX",
+                "temp": max_res["value"],
+                "station": max_res["station"]
+            })
+
+        if min_res and min_res["lat"] and min_res["lon"]:
+            map_data.append({
+                "lat": min_res["lat"],
+                "lon": min_res["lon"],
+                "type": "MIN",
+                "temp": min_res["value"],
+                "station": min_res["station"]
+            })
+
+        if map_data:
+            df_map = pd.DataFrame(map_data)
+            st.map(df_map, size=200)
+        else:
+            st.warning("A térképi megjelenítéshez nincs elérhető koordináta.")
 
     except Exception as e:
         st.error(f"⚠️ Hiba történt: {e}")
