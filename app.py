@@ -41,23 +41,14 @@ def extract_csv_from_zipbytes(zip_bytes, expected_csv_name=None):
                 return f.read().decode("utf-8", errors="replace")
     raise FileNotFoundError("A zip-ben nem található CSV fájl.")
 
-# ---------------------------------------------------------
-# CSV FELDOLGOZÁSA (min, max, koordináták, állomáshálózat)
-# ---------------------------------------------------------
 def parse_and_find_extremes(csv_text):
-
     df = pd.read_csv(io.StringIO(csv_text), sep=";", engine="python", dtype=str, header=0)
     df.columns = [c.strip() for c in df.columns]
 
     # ---- Állomásnév keresése ----
-    station_candidates = [
-        c for c in df.columns
-        if "station" in c.lower() or "állomás" in c.lower()
-    ]
-    if station_candidates:
-        station_col = station_candidates[0]
-    else:
-        station_col = df.columns[2]  # fallback
+    station_candidates = [c for c in df.columns if "station" in c.lower() or "állomás" in c.lower()]
+    station_col = station_candidates[0] if station_candidates else df.columns[2]
+    df["station"] = df[station_col].astype(str).str.strip()
 
     # ---- Min & Max oszlopok (K és M) ----
     min_col = df.columns[10]
@@ -68,14 +59,8 @@ def parse_and_find_extremes(csv_text):
     lon_candidates = [c for c in df.columns if c.lower() in ("lon", "longitude", "long")]
 
     if lat_candidates and lon_candidates:
-        df["lat"] = pd.to_numeric(
-            df[lat_candidates[0]].str.replace(",", ".", regex=False),
-            errors="coerce"
-        )
-        df["lon"] = pd.to_numeric(
-            df[lon_candidates[0]].str.replace(",", ".", regex=False),
-            errors="coerce"
-        )
+        df["lat"] = pd.to_numeric(df[lat_candidates[0]].str.replace(",", ".", regex=False), errors="coerce")
+        df["lon"] = pd.to_numeric(df[lon_candidates[0]].str.replace(",", ".", regex=False), errors="coerce")
     else:
         df["lat"] = None
         df["lon"] = None
@@ -89,7 +74,6 @@ def parse_and_find_extremes(csv_text):
 
     df["min_val"] = to_float(df[min_col])
     df["max_val"] = to_float(df[max_col])
-    df["station"] = df[station_col].astype(str).str.strip()
 
     # ---- Szélsők meghatározása ----
     min_res = None
@@ -113,11 +97,9 @@ def parse_and_find_extremes(csv_text):
             "lon": df.loc[idx, "lon"]
         }
 
-    # ---- Állomáshálózat tábla térképhez ----
     df_map = df[["station", "lat", "lon", "min_val", "max_val"]]
 
     return min_res, max_res, df_map
-
 
 # ---------------------------------------------------------
 # STREAMLIT UI
@@ -127,107 +109,108 @@ st.set_page_config(page_title="Magyarországi napi hőmérsékleti szélsők", l
 st.title("🌡️ Magyarországi napi hőmérsékleti szélsőértékek")
 st.caption("Hungaromet – Meteorológiai Adattár napi szinoptikus jelentések alapján")
 
-today_local = local_today()
+# session_state inicializálása
+if "data_loaded" not in st.session_state:
+    st.session_state["data_loaded"] = False
+if "zip_bytes" not in st.session_state:
+    st.session_state["zip_bytes"] = None
+if "csv_text" not in st.session_state:
+    st.session_state["csv_text"] = None
+if "min_res" not in st.session_state:
+    st.session_state["min_res"] = None
+if "max_res" not in st.session_state:
+    st.session_state["max_res"] = None
+if "df_map" not in st.session_state:
+    st.session_state["df_map"] = None
+if "date_selected" not in st.session_state:
+    st.session_state["date_selected"] = None
+
+# dátumválasztó
+today_local = datetime.now(ZoneInfo("Europe/Budapest")).date()
 default_date = today_local - timedelta(days=1)
-
 date_selected = st.date_input("📅 Válaszd ki a dátumot:", value=default_date)
+st.session_state["date_selected"] = date_selected
 
+# gombnyomás
 if st.button("Hőmérsékleti adatok lekérése"):
-    fname = build_filename_for_date(date_selected)
-    file_url = BASE_INDEX_URL + fname
-
-    st.write(f"Letöltendő fájl: `{fname}`")
-
     try:
-        # ZIP letöltés
-        zip_bytes = download_zip_bytes(file_url)
-
-        # Letölthető ZIP
-        st.download_button(
-            "⬇️ Eredeti ZIP fájl letöltése",
-            data=zip_bytes,
-            file_name=fname,
-            mime="application/zip"
-        )
-
-        # CSV kinyerés
-        csv_text = extract_csv_from_zipbytes(zip_bytes, expected_csv_name=fname.replace(".zip", ""))
-
-        # Feldolgozás
-        min_res, max_res, df_map = parse_and_find_extremes(csv_text)
-
-        date_str = date_selected.strftime("%Y.%m.%d")
-
-        # --- KIÍRÁS ---
-        st.subheader(f"Hőmérsékleti szélsőértékek {date_str}-re")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if max_res:
-                st.success(
-                    f"🔥 **Maximum:** {max_res['value']} °C\n\n"
-                    f"📍 {max_res['station']}"
-                )
-            else:
-                st.warning("Nincs maximum adat.")
-
-        with col2:
-            if min_res:
-                st.success(
-                    f"❄️ **Minimum:** {min_res['value']} °C\n\n"
-                    f"📍 {min_res['station']}"
-                )
-            else:
-                st.warning("Nincs minimum adat.")
-
-        # ---------------------------------------------------------
-        # TÉRKÉP
-        # ---------------------------------------------------------
-        st.subheader("🗺️ Térképi megjelenítés – Állomáshálózat és szélsők")
-
-        m = folium.Map(location=[47.1, 19.5], zoom_start=7)
-
-        # 1) Minden állomás – fekete pötty
-        for _, row in df_map.dropna(subset=["lat", "lon"]).iterrows():
-            folium.CircleMarker(
-                location=[row["lat"], row["lon"]],
-                radius=4,
-                color="black",
-                fill=True,
-                fill_color="black",
-                fill_opacity=0.9,
-                tooltip=row["station"]
-            ).add_to(m)
-
-        # 2) Minimum – kék kör
-        if min_res and min_res["lat"] and min_res["lon"]:
-            folium.CircleMarker(
-                location=[min_res["lat"], min_res["lon"]],
-                radius=8,
-                color="blue",
-                fill=True,
-                fill_color="blue",
-                fill_opacity=1,
-                tooltip=f"❄️ Minimum: {min_res['station']} – {min_res['value']} °C",
-                popup=f"<b>Minimum hőmérséklet</b><br>{min_res['station']}<br>{min_res['value']} °C"
-            ).add_to(m)
-
-        # 3) Maximum – piros kör
-        if max_res and max_res["lat"] and max_res["lon"]:
-            folium.CircleMarker(
-                location=[max_res["lat"], max_res["lon"]],
-                radius=8,
-                color="red",
-                fill=True,
-                fill_color="red",
-                fill_opacity=1,
-                tooltip=f"🔥 Maximum: {max_res['station']} – {max_res['value']} °C",
-                popup=f"<b>Maximum hőmérséklet</b><br>{max_res['station']}<br>{max_res['value']} °C"
-            ).add_to(m)
-
-        # térkép megjelenítése
-        st_folium(m, width=750, height=550)
-
+        fname = build_filename_for_date(date_selected)
+        file_url = BASE_INDEX_URL + fname
+        st.session_state["zip_bytes"] = download_zip_bytes(file_url)
+        st.session_state["csv_text"] = extract_csv_from_zipbytes(st.session_state["zip_bytes"], expected_csv_name=fname.replace(".zip",""))
+        st.session_state["min_res"], st.session_state["max_res"], st.session_state["df_map"] = parse_and_find_extremes(st.session_state["csv_text"])
+        st.session_state["data_loaded"] = True
     except Exception as e:
         st.error(f"Hiba történt: {e}")
+
+# --- Ha betöltődtek az adatok ---
+if st.session_state["data_loaded"]:
+    fname = build_filename_for_date(st.session_state["date_selected"])
+    # ZIP letöltése
+    st.download_button(
+        "⬇️ Eredeti ZIP fájl letöltése",
+        data=st.session_state["zip_bytes"],
+        file_name=fname,
+        mime="application/zip"
+    )
+
+    # Szélsőértékek
+    date_str = st.session_state["date_selected"].strftime("%Y.%m.%d")
+    st.subheader(f"Hőmérsékleti szélsőértékek {date_str}-re")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.session_state["max_res"]:
+            st.success(f"🔥 **Maximum:** {st.session_state['max_res']['value']} °C\n\n📍 {st.session_state['max_res']['station']}")
+        else:
+            st.warning("Nincs maximum adat.")
+    with col2:
+        if st.session_state["min_res"]:
+            st.success(f"❄️ **Minimum:** {st.session_state['min_res']['value']} °C\n\n📍 {st.session_state['min_res']['station']}")
+        else:
+            st.warning("Nincs minimum adat.")
+
+    # Térkép
+    st.subheader("🗺️ Térképi megjelenítés – Állomáshálózat és szélsők")
+    m = folium.Map(location=[47.1, 19.5], zoom_start=7)
+
+    # 1) Minden állomás fekete pötty
+    for _, row in st.session_state["df_map"].dropna(subset=["lat", "lon"]).iterrows():
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=4,
+            color="black",
+            fill=True,
+            fill_color="black",
+            fill_opacity=0.9,
+            tooltip=row["station"]
+        ).add_to(m)
+
+    # 2) Minimum – kék
+    min_res = st.session_state["min_res"]
+    if min_res and min_res["lat"] and min_res["lon"]:
+        folium.CircleMarker(
+            location=[min_res["lat"], min_res["lon"]],
+            radius=8,
+            color="blue",
+            fill=True,
+            fill_color="blue",
+            fill_opacity=1,
+            tooltip=f"❄️ Minimum: {min_res['station']} – {min_res['value']} °C",
+            popup=f"<b>Minimum hőmérséklet</b><br>{min_res['station']}<br>{min_res['value']} °C"
+        ).add_to(m)
+
+    # 3) Maximum – piros
+    max_res = st.session_state["max_res"]
+    if max_res and max_res["lat"] and max_res["lon"]:
+        folium.CircleMarker(
+            location=[max_res["lat"], max_res["lon"]],
+            radius=8,
+            color="red",
+            fill=True,
+            fill_color="red",
+            fill_opacity=1,
+            tooltip=f"🔥 Maximum: {max_res['station']} – {max_res['value']} °C",
+            popup=f"<b>Maximum hőmérséklet</b><br>{max_res['station']}<br>{max_res['value']} °C"
+        ).add_to(m)
+
+    st_folium(m, width=750, height=550)
