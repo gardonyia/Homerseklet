@@ -45,34 +45,24 @@ def parse_and_find_extremes(csv_text):
     df = pd.read_csv(io.StringIO(csv_text), sep=";", engine="python", dtype=str, header=0)
     df.columns = [c.strip() for c in df.columns]
 
-    # ---- Állomásnév és állomásszám ----
-    station_candidates = [c for c in df.columns if "station" in c.lower() or "állomás" in c.lower()]
-    station_col = station_candidates[0] if station_candidates else df.columns[2]
-    df["station"] = df[station_col].astype(str).str.strip()
+    # ---- StationNumber és StationName B és C oszlop ----
+    if len(df.columns) < 3:
+        raise ValueError("A CSV-ben nincs elég oszlop (minimum 3 szükséges a B és C oszlophoz).")
+    df["station_number"] = df.iloc[:, 1].astype(str).str.strip()  # B oszlop
+    df["station_name"] = df.iloc[:, 2].astype(str).str.strip()    # C oszlop
 
-    station_number_candidates = [c for c in df.columns if "stationnumber" in c.lower() or "állomásszám" in c.lower()]
-    if station_number_candidates:
-        df["station_number"] = df[station_number_candidates[0]].astype(str).str.strip()
-    else:
-        df["station_number"] = ""
-
-    # Kombinált név: "StationNumber – StationName", csak ha nincs már benne
-    def combine_station(row):
-        if row["station_number"] and row["station_number"] not in row["station"]:
-            return f"{row['station_number']} – {row['station']}"
-        else:
-            return row["station"]
-
-    df["station_full"] = df.apply(combine_station, axis=1)
+    # Kombinált név: StationName (StationNumber)
+    df["station_full"] = df["station_name"] + " (" + df["station_number"] + ")"
 
     # ---- Min & Max oszlopok (K és M) ----
-    min_col = df.columns[10]
-    max_col = df.columns[12]
+    if len(df.columns) <= 12:
+        raise ValueError("A CSV-ben nincs elég oszlop a K és M oszlopokhoz.")
+    min_col = df.columns[10]  # K oszlop
+    max_col = df.columns[12]  # M oszlop
 
-    # ---- Koordináták ----
+    # ---- Koordináták (ha vannak) ----
     lat_candidates = [c for c in df.columns if c.lower() in ("lat", "latitude")]
     lon_candidates = [c for c in df.columns if c.lower() in ("lon", "longitude", "long")]
-
     if lat_candidates and lon_candidates:
         df["lat"] = pd.to_numeric(df[lat_candidates[0]].str.replace(",", ".", regex=False), errors="coerce")
         df["lon"] = pd.to_numeric(df[lon_candidates[0]].str.replace(",", ".", regex=False), errors="coerce")
@@ -128,7 +118,6 @@ st.caption("Hungaromet – Meteorológiai Adattár napi szinoptikus jelentések 
 for key in ["data_loaded","zip_bytes","csv_text","min_res","max_res","df_map","date_selected"]:
     if key not in st.session_state:
         st.session_state[key] = None
-
 if st.session_state["data_loaded"] is None:
     st.session_state["data_loaded"] = False
 
