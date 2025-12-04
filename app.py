@@ -50,18 +50,15 @@ def parse_and_find_extremes(csv_text):
     df = pd.read_csv(io.StringIO(csv_text), sep=";", engine="python", dtype=str, header=0)
     df.columns = [c.strip() for c in df.columns]
 
-    # Állomásnév keresése
     station_candidates = [c for c in df.columns if 'station' in c.lower() or 'állomás' in c.lower()]
     station_col = station_candidates[0] if station_candidates else df.columns[2]
 
-    # Min / Max oszlopok
     min_candidates = [c for c in df.columns if c.lower() in ('tn', 'tn24', 'min', 'minimum')]
     max_candidates = [c for c in df.columns if c.lower() in ('tx', 'tx24', 'max', 'maximum')]
 
     min_col = min_candidates[0] if min_candidates else df.columns[10]
     max_col = max_candidates[0] if max_candidates else df.columns[12]
 
-    # Tisztítás → float
     def to_float_series(s):
         s2 = s.astype(str).str.strip().replace('', pd.NA)
         s2 = s2.replace({'-999': pd.NA})
@@ -72,14 +69,12 @@ def parse_and_find_extremes(csv_text):
     max_series = to_float_series(df[max_col])
     station_series = df[station_col].astype(str).str.strip()
 
-    # Minimum
     if min_series.dropna().empty:
         min_res = None
     else:
         idx = min_series.idxmin()
         min_res = {"value": float(min_series.loc[idx]), "station": station_series.loc[idx]}
 
-    # Maximum
     if max_series.dropna().empty:
         max_res = None
     else:
@@ -123,7 +118,8 @@ if st.button("🔎 Adatok lekérése", type="primary"):
         filename = build_filename_for_date(date_selected)
         url = BASE_INDEX_URL + filename
 
-        st.info("⏳ Fájl letöltése folyamatban...")
+        # ⛔ Itt volt a felesleges üzenet → töröltük
+        # st.info("⏳ Fájl letöltése folyamatban...")
 
         # ZIP LETÖLTÉSE
         zip_bytes = download_zip_bytes(url)
@@ -152,7 +148,6 @@ if st.button("🔎 Adatok lekérése", type="primary"):
 
         col1, col2 = st.columns(2)
 
-        # MAXIMUM
         with col1:
             st.markdown("### 🔥 Napi maximum")
             if max_res:
@@ -163,7 +158,6 @@ if st.button("🔎 Adatok lekérése", type="primary"):
             else:
                 st.warning("Nincs elérhető maximum adat.")
 
-        # MINIMUM
         with col2:
             st.markdown("### ❄️ Napi minimum")
             if min_res:
