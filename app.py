@@ -54,10 +54,16 @@ def parse_and_find_extremes(csv_text):
     if station_number_candidates:
         df["station_number"] = df[station_number_candidates[0]].astype(str).str.strip()
     else:
-        df["station_number"] = "N/A"
+        df["station_number"] = ""
 
-    # Kombinált név: "StationNumber – StationName"
-    df["station_full"] = df["station_number"] + " – " + df["station"]
+    # Kombinált név: "StationNumber – StationName", csak ha nincs már benne
+    def combine_station(row):
+        if row["station_number"] and row["station_number"] not in row["station"]:
+            return f"{row['station_number']} – {row['station']}"
+        else:
+            return row["station"]
+
+    df["station_full"] = df.apply(combine_station, axis=1)
 
     # ---- Min & Max oszlopok (K és M) ----
     min_col = df.columns[10]
@@ -119,20 +125,12 @@ st.title("🌡️ Magyarországi napi hőmérsékleti szélsőértékek")
 st.caption("Hungaromet – Meteorológiai Adattár napi szinoptikus jelentések alapján")
 
 # session_state inicializálása
-if "data_loaded" not in st.session_state:
+for key in ["data_loaded","zip_bytes","csv_text","min_res","max_res","df_map","date_selected"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
+
+if st.session_state["data_loaded"] is None:
     st.session_state["data_loaded"] = False
-if "zip_bytes" not in st.session_state:
-    st.session_state["zip_bytes"] = None
-if "csv_text" not in st.session_state:
-    st.session_state["csv_text"] = None
-if "min_res" not in st.session_state:
-    st.session_state["min_res"] = None
-if "max_res" not in st.session_state:
-    st.session_state["max_res"] = None
-if "df_map" not in st.session_state:
-    st.session_state["df_map"] = None
-if "date_selected" not in st.session_state:
-    st.session_state["date_selected"] = None
 
 # dátumválasztó
 today_local = datetime.now(ZoneInfo("Europe/Budapest")).date()
