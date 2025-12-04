@@ -45,10 +45,19 @@ def parse_and_find_extremes(csv_text):
     df = pd.read_csv(io.StringIO(csv_text), sep=";", engine="python", dtype=str, header=0)
     df.columns = [c.strip() for c in df.columns]
 
-    # ---- Állomásnév keresése ----
+    # ---- Állomásnév és állomásszám ----
     station_candidates = [c for c in df.columns if "station" in c.lower() or "állomás" in c.lower()]
     station_col = station_candidates[0] if station_candidates else df.columns[2]
     df["station"] = df[station_col].astype(str).str.strip()
+
+    station_number_candidates = [c for c in df.columns if "stationnumber" in c.lower() or "állomásszám" in c.lower()]
+    if station_number_candidates:
+        df["station_number"] = df[station_number_candidates[0]].astype(str).str.strip()
+    else:
+        df["station_number"] = "N/A"
+
+    # Kombinált név: "StationNumber – StationName"
+    df["station_full"] = df["station_number"] + " – " + df["station"]
 
     # ---- Min & Max oszlopok (K és M) ----
     min_col = df.columns[10]
@@ -83,7 +92,7 @@ def parse_and_find_extremes(csv_text):
         idx = df["min_val"].idxmin()
         min_res = {
             "value": float(df.loc[idx, "min_val"]),
-            "station": df.loc[idx, "station"],
+            "station": df.loc[idx, "station_full"],
             "lat": df.loc[idx, "lat"],
             "lon": df.loc[idx, "lon"]
         }
@@ -92,12 +101,12 @@ def parse_and_find_extremes(csv_text):
         idx = df["max_val"].idxmax()
         max_res = {
             "value": float(df.loc[idx, "max_val"]),
-            "station": df.loc[idx, "station"],
+            "station": df.loc[idx, "station_full"],
             "lat": df.loc[idx, "lat"],
             "lon": df.loc[idx, "lon"]
         }
 
-    df_map = df[["station", "lat", "lon", "min_val", "max_val"]]
+    df_map = df[["station_full", "lat", "lon", "min_val", "max_val"]].rename(columns={"station_full":"station"})
 
     return min_res, max_res, df_map
 
