@@ -1,6 +1,4 @@
 streamlit
 pandas
 requests
-folium
-streamlit-folium
-python-dateutil
+openpyxl
